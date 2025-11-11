@@ -1,5 +1,5 @@
 // api/find-slots.js
-const { findFirstAvailableSlots } = require('./functions.js'); // ИСПРАВЛЕНО: путь к functions.js
+const { findFirstAvailableSlots } = require('./functions.js');
 
 module.exports = async (req, res) => {
     // Vercel автоматически парсит JSON-тело запроса в req.body
