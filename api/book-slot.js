@@ -5,14 +5,16 @@ module.exports = async (req, res) => {
     // Принимаем параметры с именами, которые отправляет Ultravox
     const { customer_name, vehicle_make, service_type, datetime, problem_description, vehicle_year } = req.body;
 
-    // Разбираем datetime на дату и время
-    // Предполагаем, что datetime приходит в формате "12 ноября 2025 г. 09:00"
-    const datetimeParts = datetime.split(' ');
-    const booking_date = datetimeParts.slice(0, 4).join(' '); // "12 ноября 2025 г."
-    const booking_time = datetimeParts[4]; // "09:00"
+    // --- ИСПРАВЛЕНИЕ ПАРСИНГА DATETIME ---
+    const dateObj = new Date(datetime);
+    
+    // Форматируем дату и время для передачи в нашу функцию
+    const booking_date = dateObj.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+    const booking_time = dateObj.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
 
     // Собираем car_details
-    const car_details = `${vehicle_make} ${vehicle_year}`; // Модель не приходит, используем марку и год
+    const car_details = `${vehicle_make} ${vehicle_year}`;
 
     // Проверяем, что все нужные параметры пришли
     if (!booking_date || !booking_time || !customer_name || !car_details || !service_type) {
