@@ -123,7 +123,54 @@ async function findFirstAvailableSlots(service_type) {
     return { success: false, message: 'К сожалению, в ближайший месяц нет свободных слотов.' };
 }
 
+async function bookServiceAppointment(booking_date, booking_time, user_name, car_details) {
+    console.log(`[START] bookServiceAppointment with params: date='${booking_date}', time='${booking_time}', user='${user_name}', car='${car_details}'`);
+
+    try {
+        const [day, monthStr, year] = booking_date.split(' ');
+        const [hour, minute] = booking_time.split(':');
+        
+        const monthMap = { 'января': 0, 'февраля': 1, 'марта': 2, 'апреля': 3, 'мая': 4, 'июня': 5, 'июля': 6, 'августа': 7, 'сентября': 8, 'октября': 9, 'ноября': 10, 'декабря': 11 };
+        const monthIndex = monthMap[monthStr.toLowerCase()];
+
+        if (monthIndex === undefined) {
+            console.error(`[FATAL] Invalid month name: ${monthStr}`);
+            return { success: false, message: 'Неверный формат месяца.' };
+        }
+
+        const moscowOffset = 3;
+        const startHourUTC = parseInt(hour) - moscowOffset;
+        const startMinuteUTC = parseInt(minute);
+
+        const startTime = new Date(Date.UTC(year, monthIndex, day, startHourUTC, startMinuteUTC));
+        const endTime = new Date(startTime.getTime() + 90 * 60 * 1000); // Длительность 90 минут
+
+        console.log(`[DEBUG] Calculated event start time (UTC): ${startTime.toISOString()}`);
+        console.log(`[DEBUG] Calculated event end time (UTC): ${endTime.toISOString()}`);
+
+        const event = {
+            summary: `Запись на сервис: ${user_name}`,
+            description: `Клиент: ${user_name}\nАвтомобиль: ${car_details}\nУслуга: Диагностика`,
+            start: { dateTime: startTime.toISOString(), timeZone: 'UTC' },
+            end: { dateTime: endTime.toISOString(), timeZone: 'UTC' },
+        };
+
+        console.log('[DEBUG] Creating event in Google Calendar...');
+        const response = await calendar.events.insert({
+            calendarId: CALENDAR_ID,
+            resource: event,
+        });
+
+        console.log(`[SUCCESS] Event created: ${response.data.htmlLink}`);
+        return { success: true, message: `Отлично, я записал вас на ${booking_date} в ${booking_time}.` };
+
+    } catch (error) {
+        console.error('[FATAL] Error creating event in Google Calendar:', error);
+        return { success: false, message: 'К сожалению, не удалось создать запись. Произошла ошибка.' };
+    }
+}
 
 module.exports = {
     findFirstAvailableSlots,
+    bookServiceAppointment,
 };
