@@ -14,6 +14,50 @@ oAuth2Client.setCredentials({ refresh_token: GOOGLE_REFRESH_TOKEN });
 
 const calendar = google.calendar({ version: 'v3', auth: oAuth2Client });
 
+// --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ФОРМАТИРОВАНИЯ ВРЕМЕНИ ДЛЯ TTS ---
+function formatTimeForTTS(timeString) {
+    const [hour, minute] = timeString.split(':');
+    const hourNum = parseInt(hour);
+
+    const hoursMap = {
+        9: 'девять', 10: 'десять', 11: 'одиннадцать', 12: 'двенадцать', 
+        13: 'тринадцать', 14: 'четырнадцать', 15: 'пятнадцать', 16: 'шестнадцать',
+        17: 'семнадцать', 18: 'восемнадцать'
+    };
+
+    const hourText = hoursMap[hourNum] || hour;
+
+    if (minute === '00') {
+        return `${hourText} часов`;
+    } else if (minute === '30') {
+        return `${hourText} тридцать`;
+    } else {
+        return `${hourText} ${minute}`;
+    }
+}
+
+// --- УЛУЧШЕННАЯ ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ДАТЫ ---
+function formatDateForTTS(dateObj) {
+    const day = dateObj.getDate();
+    const month = dateObj.toLocaleString('ru-RU', { month: 'long' });
+
+    const daysMap = {
+        1: 'первое', 2: 'второе', 3: 'третье', 4: 'четвертое', 5: 'пятое',
+        6: 'шестое', 7: 'седьмое', 8: 'восьмое', 9: 'девятое', 10: 'десятое',
+        11: 'одиннадцатое', 12: 'двенадцатое', 13: 'тринадцатое', 14: 'четырнадцатое',
+        15: 'пятнадцатое', 16: 'шестнадцатое', 17: 'семнадцатое', 18: 'восемнадцатое',
+        19: 'девятнадцатое', 20: 'двадцатое', 21: 'двадцать первое', 22: 'двадцать второе',
+        23: 'двадцать третье', 24: 'двадцать четвертое', 25: 'двадцать пятое',
+        26: 'двадцать шестое', 27: 'двадцать седьмое', 28: 'двадцать восьмое',
+        29: 'двадцать девятое', 30: 'тридцатое', 31: 'тридцать первое'
+    };
+
+    const dayText = daysMap[day] || day;
+
+    return `${dayText} ${month}`;
+}
+
+
 async function findFirstAvailableSlots(service_type) {
     console.log(`[START] findFirstAvailableSlots for service: '${service_type}'`);
     
@@ -31,7 +75,7 @@ async function findFirstAvailableSlots(service_type) {
     const targetDate = new Date(today.getTime());
 
     for (let i = 0; i < 30; i++) {
-        const datePart = targetDate.toISOString().split('T')[0];
+        const datePart = targetDate.toISOString().split('T')[0]; // YYYY-MM-DD
         const dayOfWeek = targetDate.getDay();
         console.log(`
 [LOOP ${i}] Checking date: ${datePart}, Day of week: ${dayOfWeek}`);
@@ -94,8 +138,12 @@ async function findFirstAvailableSlots(service_type) {
                     if (!isOverlapping) {
                         const displayHour = slotStart.getUTCHours() + moscowOffset;
                         const displayMinute = slotStart.getUTCMinutes();
-                        const timeString = `${String(displayHour).padStart(2, '0')}:${String(displayMinute).padStart(2, '0')}`;
-                        availableSlots.push(timeString);
+                        const machineTime = `${String(displayHour).padStart(2, '0')}:${String(displayMinute).padStart(2, '0')}`;
+                        
+                        availableSlots.push({
+                            display_time: formatTimeForTTS(machineTime),
+                            machine_time: machineTime
+                        });
                     }
                 }
             }
@@ -104,8 +152,14 @@ async function findFirstAvailableSlots(service_type) {
                 console.log(`[SUCCESS] Found ${availableSlots.length} available slots. Returning result.`);
                 return { 
                     success: true, 
-                    today_date: today.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }),
-                    booking_date: targetDate.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }),
+                    today_date: {
+                        display_date: formatDateForTTS(today),
+                        machine_date: today.toISOString().split('T')[0]
+                    },
+                    booking_date: {
+                        display_date: formatDateForTTS(targetDate),
+                        machine_date: targetDate.toISOString().split('T')[0]
+                    },
                     available_times: availableSlots 
                 };
             } else {
@@ -123,26 +177,20 @@ async function findFirstAvailableSlots(service_type) {
     return { success: false, message: 'К сожалению, в ближайший месяц нет свободных слотов.' };
 }
 
-async function bookServiceAppointment(booking_date, booking_time, user_name, car_details) {
-    console.log(`[START] bookServiceAppointment with params: date='${booking_date}', time='${booking_time}', user='${user_name}', car='${car_details}'`);
+async function bookServiceAppointment(booking_date_machine, booking_time_machine, user_name, car_details) {
+    console.log(`[START] bookServiceAppointment with params: date='${booking_date_machine}', time='${booking_time_machine}', user='${user_name}', car='${car_details}'`);
 
     try {
-        const [day, monthStr, year] = booking_date.split(' ');
-        const [hour, minute] = booking_time.split(':');
+        // booking_date_machine: "YYYY-MM-DD"
+        // booking_time_machine: "HH:MM"
+        const [year, month, day] = booking_date_machine.split('-').map(Number);
+        const [hour, minute] = booking_time_machine.split(':').map(Number);
         
-        const monthMap = { 'января': 0, 'февраля': 1, 'марта': 2, 'апреля': 3, 'мая': 4, 'июня': 5, 'июля': 6, 'августа': 7, 'сентября': 8, 'октября': 9, 'ноября': 10, 'декабря': 11 };
-        const monthIndex = monthMap[monthStr.toLowerCase()];
-
-        if (monthIndex === undefined) {
-            console.error(`[FATAL] Invalid month name: ${monthStr}`);
-            return { success: false, message: 'Неверный формат месяца.' };
-        }
-
         const moscowOffset = 3;
-        const startHourUTC = parseInt(hour) - moscowOffset;
-        const startMinuteUTC = parseInt(minute);
+        const startHourUTC = hour - moscowOffset;
+        const startMinuteUTC = minute;
 
-        const startTime = new Date(Date.UTC(year, monthIndex, day, startHourUTC, startMinuteUTC));
+        const startTime = new Date(Date.UTC(year, month - 1, day, startHourUTC, startMinuteUTC));
         const endTime = new Date(startTime.getTime() + 90 * 60 * 1000); // Длительность 90 минут
 
         console.log(`[DEBUG] Calculated event start time (UTC): ${startTime.toISOString()}`);
@@ -162,7 +210,7 @@ async function bookServiceAppointment(booking_date, booking_time, user_name, car
         });
 
         console.log(`[SUCCESS] Event created: ${response.data.htmlLink}`);
-        return { success: true, message: `Отлично, я записал вас на ${booking_date} в ${booking_time}.` };
+        return { success: true, message: `Отлично, я записал вас на ${formatDateForTTS(new Date(booking_date_machine))} в ${formatTimeForTTS(booking_time_machine)}.` };
 
     } catch (error) {
         console.error('[FATAL] Error creating event in Google Calendar:', error);
